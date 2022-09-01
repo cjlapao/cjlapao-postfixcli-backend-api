@@ -2,6 +2,6 @@ apiVersion: v2
 name: go-template
 description: A Helm chart template for your application
 type: application
-version: 0.0.0
-appVersion: "0.0.0"
+version: 0.0.1
+appVersion: "0.0.1"
 icon: https://common-go.carloslapao.com/images/icon.png
