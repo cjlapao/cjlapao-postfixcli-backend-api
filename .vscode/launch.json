@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/main.go",
+      // Comment out if you need to setup environment variables for the module
+      // "envFile": "${workspaceFolder}/.env",
+      // "args": [
+      //   "--config",
+      //   ".env"
+      // ]
+    }
+  ]
+}

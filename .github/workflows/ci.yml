@@ -1,0 +1,228 @@
+name: CI Release
+
+on:
+  push:
+    branches: [ main ]
+    
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'go' ]
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.head_ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.18
+    - name: Bump version and push tag
+      id: tag_version
+      uses: mathieudutour/github-tag-action@v5.4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    - shell: bash
+      name: Create tag file
+      run: |
+        echo ${{ steps.tag_version.outputs.new_tag }} > tag.txt
+        echo ${{ steps.tag_version.outputs.changelog }} > tag_changelog.txt
+    - name: Upload tag version
+      uses: actions/upload-artifact@v1
+      with:
+        name: tag_version
+        path: ./tag.txt
+    - name: Upload tag changelog
+      uses: actions/upload-artifact@v1
+      with:
+        name: tag_changelog
+        path: ./tag_changelog.txt
+    - name: Removing tag files
+      run: |
+        rm tag.txt
+        rm tag_changelog.txt
+    - shell: bash
+      name: Bump package version
+      run: |
+        NEW_TAG_NAME=$(echo ${{ steps.tag_version.outputs.new_tag }} | sed 's/v//g')
+        sed -i "s/^var ver = \"[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+\"/var ver = \"$NEW_TAG_NAME\"/g" ./src/main.go
+        sed -i "s/^version: [[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+/version: $NEW_TAG_NAME/g" ./charts/Chart.yaml
+        sed -i "s/^appVersion: \"[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+\"/appVersion: \"$NEW_TAG_NAME\"/g" ./charts/Chart.yaml
+    - uses: stefanzweifel/git-auto-commit-action@v4
+    - name: Upload Helm Chart
+      uses: actions/upload-artifact@v1
+      with:
+        name: helm_chart
+        path: ./charts
+    - name: Build Linux x64
+      id: build_linux_x64
+      env:
+        GOOS: linux
+        GOARCH: amd64
+      working-directory: src
+      run: go build -o ${{ github.event.repository.name }}
+    - name: Zip Linux x64
+      id: zip_linux_x64
+      working-directory: src
+      run: |
+        zip --junk-paths ${{ github.event.repository.name }}_linux_x64 ${{ github.event.repository.name }}
+    - name: Upload linux build
+      uses: actions/upload-artifact@v1
+      with:
+        name: ${{ github.event.repository.name }}_linux_x64
+        path: ./src/${{ github.event.repository.name }}_linux_x64.zip
+    - name: Build Windows x64
+      id: build_windows_x64
+      env:
+        GOOS: windows
+        GOARCH: amd64
+      working-directory: src
+      run: go build -o ${{ github.event.repository.name }}.exe
+    - name: Zip Windows x64
+      id: zip_windows_x64
+      working-directory: src
+      run: |
+        zip --junk-paths ${{ github.event.repository.name }}_win_x64 ${{ github.event.repository.name }}.exe
+    - name: Upload windows build
+      uses: actions/upload-artifact@v1
+      with:
+        name: ${{ github.event.repository.name }}_win_x64
+        path: ./src/${{ github.event.repository.name }}_win_x64.zip
+  publish_release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'go' ]
+    steps:
+    - name: Download tag
+      uses: actions/download-artifact@v1
+      with:
+        name: tag_version
+    - name: Download tag changelog
+      uses: actions/download-artifact@v1
+      with:
+        name: tag_changelog
+    - name: Output
+      shell: bash
+      id: tag_output
+      run: |
+        echo "::set-output name=TAG_NAME::$(cat tag_version/tag.txt)"
+        echo "::set-output name=TAG_CHANGELOG::$(cat tag_changelog/tag_changelog.txt)"
+    - name: Download linux build
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ github.event.repository.name }}_linux_x64
+    - name: Download windows build
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ github.event.repository.name }}_win_x64
+    - name: Branch name
+      id: branch_name
+      run: |
+        echo ::set-output name=SOURCE_NAME::${GITHUB_REF#refs/*/}
+        echo ::set-output name=SOURCE_BRANCH::${GITHUB_REF#refs/heads/}
+        echo ::set-output name=SOURCE_TAG::${GITHUB_REF#refs/tags/}
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag_output.outputs.TAG_NAME }}
+        release_name: Release ${{ steps.tag_output.outputs.TAG_NAME }}
+        body: ${{ steps.tag_output.outputs.TAG_CHANGELOG }}
+        draft: false
+        prerelease: false
+    - name: Upload Linux x64 Asset
+      id: upload-linux-x64-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./${{ github.event.repository.name }}_linux_x64/${{ github.event.repository.name }}_linux_x64.zip
+        asset_name: ${{ github.event.repository.name }}_linux_x64.zip
+        asset_content_type: application/zip
+    - name: Upload Windows x64 Asset
+      id: upload-windows-x64-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./${{ github.event.repository.name }}_win_x64/${{ github.event.repository.name }}_win_x64.zip
+        asset_name: ${{ github.event.repository.name }}_win_x64.zip
+        asset_content_type: application/zip
+  publish-docker:
+    name: Publish Docker
+    needs: publish_release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'go' ]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Download tag
+      uses: actions/download-artifact@v1
+      with:
+        name: tag_version
+    - name: Output
+      shell: bash
+      id: tag_output
+      run: |
+        NEW_TAG_NAME=$(cat tag_version/tag.txt | sed 's/v//g')
+        echo "::set-output name=TAG_NAME::$NEW_TAG_NAME"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+    - name: Login to DockerHub
+      uses: docker/login-action@v1 
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Build and push
+      id: docker_build
+      uses: docker/build-push-action@v2
+      with:
+        push: true
+        tags: |
+          cjlapao/${{ github.event.repository.name }}:latest
+          cjlapao/${{ github.event.repository.name }}:${{ steps.tag_output.outputs.TAG_NAME }}
+    - name: Image digest
+      run: echo ${{ steps.docker_build.outputs.digest }}
+  publish-helm:
+    name: Publish Helm Chart
+    needs: publish_release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'go' ]
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: gh-pages
+    - name: Download Chart
+      uses: actions/download-artifact@v1
+      with:
+        name: helm_chart
+        path: chart_files
+    - name: Install Helm
+      uses: azure/setup-helm@v1
+      with:
+        version: v3.8.1
+    - name: Helm Package
+      run: |
+        helm package ./chart_files -d charts
+        helm repo index --url https://${{ github.event.repository.name }}.carloslapao.com/charts ./charts
+        rm -R chart_files
+    - uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: "chart bumped"
+        branch: gh-pages

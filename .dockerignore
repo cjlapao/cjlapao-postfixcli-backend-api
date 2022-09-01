@@ -1,0 +1,9 @@
+.git
+.test
+.exe
+.tools
+/docs
+/charts
+/.local
+/.vscode
+/bin
