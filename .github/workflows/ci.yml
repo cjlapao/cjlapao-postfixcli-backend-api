@@ -63,34 +63,34 @@ jobs:
         GOOS: linux
         GOARCH: amd64
       working-directory: src
-      run: go build -o ${{ github.event.repository.name }}
+      run: go build -o postfixcli-backend-api-service
     - name: Zip Linux x64
       id: zip_linux_x64
       working-directory: src
       run: |
-        zip --junk-paths ${{ github.event.repository.name }}_linux_x64 ${{ github.event.repository.name }}
+        zip --junk-paths postfixcli-backend-api-service_linux_x64 postfixcli-backend-api-service
     - name: Upload linux build
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ github.event.repository.name }}_linux_x64
-        path: ./src/${{ github.event.repository.name }}_linux_x64.zip
+        name: postfixcli-backend-api-service_linux_x64
+        path: ./src/postfixcli-backend-api-service_linux_x64.zip
     - name: Build Windows x64
       id: build_windows_x64
       env:
         GOOS: windows
         GOARCH: amd64
       working-directory: src
-      run: go build -o ${{ github.event.repository.name }}.exe
+      run: go build -o postfixcli-backend-api-service.exe
     - name: Zip Windows x64
       id: zip_windows_x64
       working-directory: src
       run: |
-        zip --junk-paths ${{ github.event.repository.name }}_win_x64 ${{ github.event.repository.name }}.exe
+        zip --junk-paths postfixcli-backend-api-service_win_x64 postfixcli-backend-api-service.exe
     - name: Upload windows build
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ github.event.repository.name }}_win_x64
-        path: ./src/${{ github.event.repository.name }}_win_x64.zip
+        name: postfixcli-backend-api-service_win_x64
+        path: ./src/postfixcli-backend-api-service_win_x64.zip
   publish_release:
     name: Publish Release
     needs: build
@@ -117,11 +117,11 @@ jobs:
     - name: Download linux build
       uses: actions/download-artifact@v1
       with:
-        name: ${{ github.event.repository.name }}_linux_x64
+        name: postfixcli-backend-api-service_linux_x64
     - name: Download windows build
       uses: actions/download-artifact@v1
       with:
-        name: ${{ github.event.repository.name }}_win_x64
+        name: postfixcli-backend-api-service_win_x64
     - name: Branch name
       id: branch_name
       run: |
@@ -146,8 +146,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./${{ github.event.repository.name }}_linux_x64/${{ github.event.repository.name }}_linux_x64.zip
-        asset_name: ${{ github.event.repository.name }}_linux_x64.zip
+        asset_path: ./postfixcli-backend-api-service_linux_x64/postfixcli-backend-api-service_linux_x64.zip
+        asset_name: postfixcli-backend-api-service_linux_x64.zip
         asset_content_type: application/zip
     - name: Upload Windows x64 Asset
       id: upload-windows-x64-asset 
@@ -156,73 +156,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./${{ github.event.repository.name }}_win_x64/${{ github.event.repository.name }}_win_x64.zip
-        asset_name: ${{ github.event.repository.name }}_win_x64.zip
+        asset_path: ./postfixcli-backend-api-service_win_x64/postfixcli-backend-api-service_win_x64.zip
+        asset_name: postfixcli-backend-api-service_win_x64.zip
         asset_content_type: application/zip
-  publish-docker:
-    name: Publish Docker
-    needs: publish_release
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'go' ]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Download tag
-      uses: actions/download-artifact@v1
-      with:
-        name: tag_version
-    - name: Output
-      shell: bash
-      id: tag_output
-      run: |
-        NEW_TAG_NAME=$(cat tag_version/tag.txt | sed 's/v//g')
-        echo "::set-output name=TAG_NAME::$NEW_TAG_NAME"
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
-    - name: Login to DockerHub
-      uses: docker/login-action@v1 
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - name: Build and push
-      id: docker_build
-      uses: docker/build-push-action@v2
-      with:
-        push: true
-        tags: |
-          cjlapao/${{ github.event.repository.name }}:latest
-          cjlapao/${{ github.event.repository.name }}:${{ steps.tag_output.outputs.TAG_NAME }}
-    - name: Image digest
-      run: echo ${{ steps.docker_build.outputs.digest }}
-  publish-helm:
-    name: Publish Helm Chart
-    needs: publish_release
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'go' ]
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        ref: gh-pages
-    - name: Download Chart
-      uses: actions/download-artifact@v1
-      with:
-        name: helm_chart
-        path: chart_files
-    - name: Install Helm
-      uses: azure/setup-helm@v1
-      with:
-        version: v3.8.1
-    - name: Helm Package
-      run: |
-        helm package ./chart_files -d charts
-        helm repo index --url https://${{ github.event.repository.name }}.carloslapao.com/charts ./charts
-        rm -R chart_files
-    - uses: stefanzweifel/git-auto-commit-action@v4
-      with:
-        commit_message: "chart bumped"
-        branch: gh-pages
