@@ -9,6 +9,7 @@ import (
 	"github.com/cjlapao/common-go/helper"
 	"github.com/cjlapao/common-go/version"
 	"github.com/cjlapao/postfixcli-backend-api/ioc"
+	"github.com/cjlapao/postfixcli-backend-api/models"
 	"github.com/cjlapao/postfixcli-backend-api/services"
 )
 
@@ -60,6 +61,40 @@ func Init() {
 			ioc.Log.Exception(err, "Error")
 		}
 		linode.GetNodeInstances()
+
+		azure := services.GetAzureService()
+		azure.GetDnsZone("Infrastructure", "carloslapao.com")
+		azure.GetDnsZones("Infrastructure")
+		dnsr, _ := azure.GetDnsRecord("Infrastructure", "carloslapao.com", "AAAA", "2a01-7e00-f03c-93ff-fecc-6a6f")
+		ioc.Log.Info(dnsr.Name)
+		err = azure.UpsertADnsRecord("Infrastructure", "carloslapao.com", "test1", 50, "200.10.0.1", "200.10.0.2")
+		if err != nil {
+			ioc.Log.Exception(err, "error a dns")
+		}
+		err = azure.UpsertAAAADnsRecord("Infrastructure", "carloslapao.com", "test1aaaa", 30, "2a01:7e00::f03c:93ff:fecc:6a6f")
+		if err != nil {
+			ioc.Log.Exception(err, "error aaa dns")
+		}
+		err = azure.UpsertMXDnsRecord("Infrastructure", "carloslapao.com", 30, models.AzureDnsMXRecord{
+			Exchange:   "mail.carloslapao.com",
+			Preference: 10,
+		})
+		if err != nil {
+			ioc.Log.Exception(err, "error mx dns")
+		}
+		err = azure.UpsertCNAMEDnsRecord("Infrastructure", "carloslapao.com", "test_cname", 50, "mail.carloslapao.com")
+		if err != nil {
+			ioc.Log.Exception(err, "error CNAME dns")
+		}
+		err = azure.UpsertSRVDnsRecord("Infrastructure", "carloslapao.com", "_smtp", 50, models.AzureDnsSRVRecord{
+			Port:     25,
+			Priority: 10,
+			Target:   "mail.carloslapao.com",
+			Weight:   10,
+		})
+		if err != nil {
+			ioc.Log.Exception(err, "error mx dns")
+		}
 	}
 }
 
