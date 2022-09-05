@@ -102,6 +102,7 @@ func (svc *AzureService) UpsertDnsRecord(resourceGroup string, zoneName string, 
 			MXRecords:   dnsRecord.Properties.MXRecords,
 			SRVRecords:  dnsRecord.Properties.SRVRecords,
 			CNAMERecord: dnsRecord.Properties.CNAMERecord,
+			TXTRecords:  dnsRecord.Properties.TXTRecords,
 		},
 	}
 
@@ -272,14 +273,24 @@ func (svc *AzureService) UpsertTXTDnsRecord(resourceGroup string, zoneName strin
 		}
 
 		sub := ""
+		count := 1
 		for i, v := range value {
-			sub = fmt.Sprintf("%v%v", sub, v)
-			if i > 254 {
+			sub = fmt.Sprintf("%v%v", sub, string(v))
+			if i > (200 * count) {
 				txt.Value = append(txt.Value, sub)
 				sub = ""
+				count += 1
 			}
 		}
-		putModel.Properties.TXTRecords = txt
+		if len(sub) > 0 {
+			txt.Value = append(txt.Value, sub)
+		}
+
+		for _, r := range txt.Value {
+			putModel.Properties.TXTRecords = append(putModel.Properties.TXTRecords, models.AzureDnsTXTRecord{
+				Value: []string{r},
+			})
+		}
 	}
 
 	_, err := svc.UpsertDnsRecord(resourceGroup, zoneName, putModel)

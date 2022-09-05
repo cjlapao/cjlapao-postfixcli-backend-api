@@ -93,7 +93,15 @@ func Init() {
 			Weight:   10,
 		})
 		if err != nil {
-			ioc.Log.Exception(err, "error mx dns")
+			ioc.Log.Exception(err, "error srv dns")
+		}
+		err = azure.UpsertTXTDnsRecord("Infrastructure", "carloslapao.com", "_small", 50, "Hang on, my kittens are scratching at the bathtub and they'll upset by the lack of biscuits.Hang on, my kittens are scratching at the bathtub and they'll upset by the lack of biscuits.")
+		if err != nil {
+			ioc.Log.Exception(err, "error txt small dns")
+		}
+		err = azure.UpsertTXTDnsRecord("Infrastructure", "carloslapao.com", "_big", 50, "Hang on, my kittens are scratching at the bathtub and they'll upset by the lack of biscuits.Hang on, my kittens are scratching at the bathtub and they'll upset by the lack of biscuits.Hang on, my kittens are scratching at the bathtub and they'll upset by the lack of biscuits.")
+		if err != nil {
+			ioc.Log.Exception(err, "error txt small dns")
 		}
 	}
 }
