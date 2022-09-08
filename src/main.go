@@ -9,6 +9,7 @@ import (
 	"github.com/cjlapao/common-go/helper"
 	"github.com/cjlapao/common-go/version"
 	"github.com/cjlapao/postfixcli-backend-api/ioc"
+	"github.com/cjlapao/postfixcli-backend-api/models"
 	"github.com/cjlapao/postfixcli-backend-api/services"
 )
 
@@ -106,6 +107,15 @@ func Init() {
 		err := sys.SetupDefaultVirtualMailFolder()
 		if err != nil {
 			ioc.Log.Exception(err, "error creating virtual mail folder")
+		}
+		opendmarc := services.GetOpenDMARCService()
+		err = opendmarc.Init()
+		if err != nil {
+			ioc.Log.Exception(err, "error init opendmarc")
+		}
+		err = opendmarc.Config(models.MailServerConfig{Domain: "carloslapao.com", SubDomain: "mail"})
+		if err != nil {
+			ioc.Log.Exception(err, "error config opendmarc")
 		}
 	}
 }
