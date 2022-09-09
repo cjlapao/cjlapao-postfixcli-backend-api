@@ -1,13 +1,13 @@
 package models
 
 type LinodeLoadBalancerResponse struct {
-	Data    []LoadBalancer `json:"data"`
-	Page    int64          `json:"page"`
-	Pages   int64          `json:"pages"`
-	Results int64          `json:"results"`
+	Data    []LinodeLoadBalancer `json:"data"`
+	Page    int64                `json:"page"`
+	Pages   int64                `json:"pages"`
+	Results int64                `json:"results"`
 }
 
-type LoadBalancer struct {
+type LinodeLoadBalancer struct {
 	ID                 int64         `json:"id"`
 	Label              string        `json:"label"`
 	Region             string        `json:"region"`

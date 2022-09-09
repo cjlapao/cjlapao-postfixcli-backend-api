@@ -108,12 +108,31 @@ func Init() {
 		if err != nil {
 			ioc.Log.Exception(err, "error creating virtual mail folder")
 		}
+
+		mailConfig := models.MailServerConfig{
+			Domain:    "carloslapao.com",
+			SubDomain: "mail",
+			LoadBalancer: models.MailServerLoadBalancer{
+				Hostname: "ip.linode.com",
+			},
+		}
+
+		postfix := services.GetPostfixService()
+		err = postfix.Init()
+		if err != nil {
+			ioc.Log.Exception(err, "error init postfix")
+		}
+		err = postfix.Configure(mailConfig)
+		if err != nil {
+			ioc.Log.Exception(err, "error config postfix")
+		}
+
 		opendmarc := services.GetOpenDMARCService()
 		err = opendmarc.Init()
 		if err != nil {
 			ioc.Log.Exception(err, "error init opendmarc")
 		}
-		err = opendmarc.Config(models.MailServerConfig{Domain: "carloslapao.com", SubDomain: "mail"})
+		err = opendmarc.Configure(mailConfig)
 		if err != nil {
 			ioc.Log.Exception(err, "error config opendmarc")
 		}
