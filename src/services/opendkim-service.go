@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io/fs"
 
+	"github.com/cjlapao/common-go/commands"
 	"github.com/cjlapao/common-go/guard"
 	"github.com/cjlapao/common-go/helper"
 	"github.com/cjlapao/common-go/helper/linux_helper"
 	"github.com/cjlapao/common-go/helper/linux_service"
-	"github.com/cjlapao/common-go/helper/linux_user"
 	"github.com/cjlapao/postfixcli-backend-api/ioc"
 	"github.com/cjlapao/postfixcli-backend-api/models"
 )
@@ -22,8 +22,9 @@ const (
 )
 
 type OpenDKIMService struct {
-	Context         context.Context
-	SocketDirectory string
+	Context          context.Context
+	ConfigFilePath   string
+	ConfigFolderPath string
 }
 
 func GetOpenDKIMService() *OpenDKIMService {
@@ -40,7 +41,8 @@ func NewOpenDKIMService() *OpenDKIMService {
 	}
 
 	globalOpenDKIMService = &OpenDKIMService{
-		SocketDirectory: "/var/spool/postfix/opendmarc",
+		ConfigFilePath:   "/etc/opendkim.conf",
+		ConfigFolderPath: "/etc/opendkim",
 	}
 
 	globalOpenDKIMService.Context = context.Background()
@@ -49,61 +51,133 @@ func NewOpenDKIMService() *OpenDKIMService {
 }
 
 func (svc *OpenDKIMService) Name() string {
-	return "OpenDMARC"
+	return "OpenDKIM"
 }
 
 func (svc *OpenDKIMService) Start() error {
-	return linux_service.Start("opendmarc")
+	return linux_service.Start("opendkim")
 }
 
 func (svc *OpenDKIMService) Stop() error {
-	return linux_service.Stop("opendmarc")
+	return linux_service.Stop("opendkim")
 }
 
 func (svc *OpenDKIMService) Restart() error {
-	return linux_service.Restart("opendmarc")
+	return linux_service.Restart("opendkim")
 }
 
 func (svc *OpenDKIMService) Status() linux_service.LinuxServiceState {
-	return linux_service.Status("opendmarc")
+	return linux_service.Status("opendkim")
+}
+
+func (svc *OpenDKIMService) ConfigKeyFolderPath() string {
+	return helper.JoinPath(svc.ConfigFolderPath, "keys")
+}
+
+func (svc *OpenDKIMService) SigningTableFilePath() string {
+	return helper.JoinPath(svc.ConfigFolderPath, "signing.table")
+}
+
+func (svc *OpenDKIMService) KeysTableFilePath() string {
+	return helper.JoinPath(svc.ConfigFolderPath, "key.table")
+}
+
+func (svc *OpenDKIMService) TrustedHostsFilePath() string {
+	return helper.JoinPath(svc.ConfigFolderPath, "trusted.hosts")
 }
 
 func (svc *OpenDKIMService) Init() error {
-	ioc.Log.Info("Starting initialization of OpenDMARC")
+	ioc.Log.Info("Starting initialization of OpenDKIM")
 	if svc.Status() != linux_service.LinuxServiceRunning {
 		if err := svc.Stop(); err != nil {
 			return err
 		}
 	}
 
-	if !helper.DirectoryExists(svc.SocketDirectory) {
-		if !helper.CreateDirectory(svc.SocketDirectory, fs.ModePerm) {
-			return fmt.Errorf("there was an error creating the folder %v", svc.SocketDirectory)
+	// Changing the config file mode
+	if !helper.FileExists(svc.ConfigFilePath) {
+		linux_helper.ChangeFileMode(svc.ConfigFilePath, "u=rw,go=r", false)
+	}
+
+	// Setting new config files variables
+	// Creating the config folders
+	if !helper.DirectoryExists(svc.ConfigFolderPath) {
+		if !helper.CreateDirectory(svc.ConfigKeyFolderPath(), fs.ModePerm) {
+			return fmt.Errorf("there was an error creating the folder %v", svc.ConfigFolderPath)
 		} else {
-			ioc.Log.Info("Created OpenDMARC default SOCKET folder")
+			ioc.Log.Info("Created OpenDKIM default config folder")
+			// Creating the config keys folder
+			if !helper.CreateDirectory(svc.ConfigKeyFolderPath(), fs.ModePerm) {
+				return fmt.Errorf("there was an error creating the folder %v", svc.ConfigFolderPath)
+			} else {
+				ioc.Log.Info("Created OpenDKIM default config keys folder")
+			}
 		}
 	}
 
-	err := linux_helper.ChangeOwner(svc.SocketDirectory, OpenDMARCUserName, OpenDMARCGroupName, true)
+	// Changing config folder owner
+	err := linux_helper.ChangeOwner(svc.ConfigFolderPath, OpenDKIMUserName, OpenDKIMGroupName, true)
+
+	if err != nil {
+		return err
+	}
+	ioc.Log.Info("Updated user permissions in the OpenDKIM default config folder")
+
+	// Changing config keys folder mode
+	err = linux_helper.ChangeFileMode(svc.ConfigFolderPath, "go-rw", true)
 
 	if err != nil {
 		return err
 	}
 
-	err = linux_helper.ChangeFileMode(svc.SocketDirectory, "750", true)
+	ioc.Log.Info("Updated folder mode in the OpenDKIM default config keys folder")
 
-	if err != nil {
-		return err
+	// Creating default configuration files
+	if !helper.FileExists(svc.SigningTableFilePath()) {
+		_, err = commands.Execute("touch", svc.SigningTableFilePath())
+		if err != nil {
+			return err
+		} else {
+			ioc.Log.Info("Created OpenDKIM signing table configuration file")
+		}
 	}
-	ioc.Log.Info("Updated user permissions in the OpenDMARC default SOCKET folder")
 
-	err = linux_user.AddToGroup(PostfixUserName, OpenDMARCGroupName)
-	if err != nil {
-		return err
+	if !helper.FileExists(svc.KeysTableFilePath()) {
+		_, err = commands.Execute("touch", svc.KeysTableFilePath())
+		if err != nil {
+			return err
+		} else {
+			ioc.Log.Info("Created OpenDKIM keys table configuration file")
+		}
 	}
-	ioc.Log.Info("Added %v to %v group", PostfixUserName, OpenDMARCGroupName)
+
+  if !helper.FileExists(svc.TrustedHostsFilePath()) {
+		_, err = commands.Execute("touch", svc.TrustedHostsFilePath())
+		if err != nil {
+			return err
+		} else {
+			ioc.Log.Info("Created OpenDKIM trusted host configuration file")
+		}
+	}
+
+  hostname, err := commands.Execute("hostname", "-s")
+  
+  svc.TrustHost("127.0.0.1")
+  svc.TrustHost("::1")
+  svc.TrustHost("localhost")
+  svc.TrustHost(hostname)
 
 	return nil
+}
+
+func (svc *OpenDKIMService) TrustHost(host string) error {
+  rawFileContent, err := helper.ReadFromFile(svc.TrustedHostsFilePath())
+  if err != nil {
+    return err
+  }
+
+  fileContent = 
+
 }
 
 func (svc *OpenDKIMService) Configure(config models.MailServerConfig) error {
